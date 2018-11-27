@@ -4,7 +4,6 @@
 using namespace std;
 #include <comdef.h>
 #include <Wbemidl.h>
-Отчет о производственной практике (научно-исследовательская работа)
 #pragma comment(lib, "wbemuuid.lib")
 
 int main(int argc, char **argv)
