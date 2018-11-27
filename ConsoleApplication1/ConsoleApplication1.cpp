@@ -1,9 +1,10 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 #define _WIN32_DCOM
 #include <iostream>
 using namespace std;
 #include <comdef.h>
 #include <Wbemidl.h>
+
 #pragma comment(lib, "wbemuuid.lib")
 
 int main(int argc, char **argv)
@@ -100,12 +101,20 @@ int main(int argc, char **argv)
 	// to make IWbemServices calls.
 	hres = pLoc->ConnectServer(
 		_bstr_t(L"ROOT\\CIMV2"), // Object path of WMI namespace
-		NULL,                    // User name. NULL = current user
-		NULL,                    // User password. NULL = current
-		0,                       // Locale. NULL indicates current
-		NULL,                    // Security flags.
-		0,                       // Authority (for example, Kerberos)
-		0,                       // Context object 
+		NULL,                    // User name. NULL = current user 
+		NULL,                    // User password. NULL = current 
+		NULL,                    // Locale. NULL indicates current
+		NULL,                    // Security flags.WBEM_FLAG_CONNECT_USE_MAX_WAIT (128 (0x80))
+		//ConnectServer вызов возвращается в течение 2 минут или меньше.Используйте этот флаг,
+		//чтобы ваша программа перестала реагировать на неопределенный срок, если сервер был сломан.
+		NULL,                       // Authority (for example, Kerberos)Если оставить этот параметр пустым, используется аутентификация NTLM 
+		//и используется домен NTLM текущего пользователя.Если домен указан в strUser , который является рекомендуемым местом,то он не должен указываться здесь.
+		//Указание домена в обоих параметрах приводит к недопустимой ошибке параметра.
+		NULL,                       // Context object 
+		//Как правило, это NULL . В противном случае это указатель на объект IWbemContext, требуемый одним или несколькими поставщиками динамического класса. 
+		//Значения в объекте context должны быть указаны в документации для соответствующих поставщиков. НАПРИМЕР
+		//IWbemContext :: Clone	Метод IWbemContext :: Clone делает логическую копию текущего объекта IWbemContext.
+		//Этот метод может быть полезен, когда необходимо сделать много вызовов, которые имеют в основном идентичные объекты IWbemContext.
 		&pSvc                    // pointer to IWbemServices proxy
 	);
 
@@ -126,13 +135,26 @@ int main(int argc, char **argv)
 
 	hres = CoSetProxyBlanket(
 		pSvc,                        // Indicates the proxy to set
-		RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
-		RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
-		NULL,                        // Server principal name 
-		RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx 
-		RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
-		NULL,                        // client identity
-		EOAC_NONE                    // proxy capabilities 
+		RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxxNTLMSSP, идентификатор службы идентификации которого является RPC_C_AUTHN_WINNT,
+		//является поставщиком поддержки безопасности, который доступен для всех версий DCOM. Он использует протокол NTLM для аутентификации.
+		//NTLM никогда не передает пароль пользователя на сервер во время аутентификации. Поэтому сервер не может использовать пароль во время олицетворения
+		//для доступа к сетевым ресурсам, к которым у пользователя будет доступ. Доступ к только локальным ресурсам можно получить.
+		RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx Используемая служба авторизации. 
+		//RPC_C_AUTHZ_NONE следует использовать в качестве службы авторизации,
+		//если в качестве службы проверки подлинности используются службы NTLMSSP, Kerberos или Schannel.
+		NULL,                        // Server principal name. Имя главного сервера, которое будет использоваться с службой аутентификации.
+		// NULL, если вы не хотите взаимной аутентификации Как правило, указание NULL не
+		//будет сбросить имя участника сервера в прокси; скорее, прежняя установка будет сохранена. 
+		RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx Используемый уровень аутентификации
+		//Аутентификация выполняется только в начале каждого вызова удаленной процедуры, когда сервер получает запрос.
+		RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx Используемый уровень олицетворения.
+		//Если NTLMSSP является службой аутентификации, это значение должно быть RPC_C_IMP_LEVEL_IMPERSONATE
+		//Серверный процесс может олицетворять контекст безопасности клиента, действуя от имени клиента. 
+		//Этот уровень олицетворения может использоваться для доступа к локальным ресурсам, таким как файлы.
+		NULL,                        // client identity Если этот параметр равен NULL , DCOM использует текущий идентификатор прокси (который является либо токеном процесса, либо маркером олицетворения).\
+									 // Если дескриптор ссылается на структуру, это идентификатор используется.
+		EOAC_NONE                    // proxy capabilities Возможности этого прокси.
+		//EOAC_NO_CUSTOM_MARSHAL Указание этого флага помогает защитить безопасность сервера при использовании DCOM или COM +. Это уменьшает шансы на выполнение произвольных DLL
 	);
 
 	if (FAILED(hres))
@@ -156,7 +178,8 @@ int main(int argc, char **argv)
 		bstr_t("SELECT * FROM Win32_OperatingSystem"),
 		WBEM_FLAG_FORWARD_ONLY,// 1.Этот флаг заставляет перечислитель пересылать только вперед. Перечислители только в прямом направлении, как правило, 
 		//намного быстрее и используют меньше памяти, чем обычные счетчики, но не позволяют звонить на Clone или Reset.
-		NULL,// Указатель на контекст
+		NULL,// Указатель на контекст Обычно NULL . В противном случае это указатель на объект IWbemContext, который может использоваться поставщиком,
+		//который предоставляет запрашиваемые классы или экземпляры. Значения в объекте контекста должны быть указаны в документации соответствующего поставщика.
 		&pEnumerator);//Если ошибка не возникает, это получает перечислитель, который позволяет вызывающему пользователю извлекать экземпляры
 	//в результирующем наборе запроса. Это не ошибка для запроса иметь набор результатов с 0 экземплярами. Это определяется только попыткой итерации через экземпляры. 
 	//Этот объект возвращается с положительным счетчиком ссылок. Вызывающий должен вызвать Release, когда объект больше не требуется.
@@ -182,7 +205,7 @@ int main(int argc, char **argv)
 	while (pEnumerator)
 	{
 		HRESULT hr = pEnumerator->Next(WBEM_INFINITE,// время 
-			1,//Количество запрошенных объектов.
+			1,//Количество запрошенных объектов. Ucount
 			&pclsObj,//Куда положить
 			&uReturn);//Указатель на ULONG, который получает количество возвращенных объектов.
 		//Это число может быть меньше количества, указанного в uCount. Этот указатель не может быть NULL.
@@ -195,7 +218,7 @@ int main(int argc, char **argv)
 		VARIANT vtProp;//Variant в языке C++ - универсальный тип, который может принимать значения разных типов данных.
 
 		// Get the value of the Name property
-		hr = pclsObj->Get(L"Name", 0, &vtProp, 0, 0); //Имя параметра, зарезервирован должен быть 0, Параметру присваевается тип, TBD,Может быть NULL.
+		hr = pclsObj->Get(L"Name", 0, &vtProp, 0, 0); //Имя параметра, зарезервирован должен быть 0, Параметру присваевается тип, & pType присваеваемый, Может быть NULL.
 		//Если не NULL, значение LONG указывает на получение информации о происхождении свойства.
 		wcout << " OS Name : " << vtProp.bstrVal << endl;
 		VariantClear(&vtProp);
@@ -208,7 +231,8 @@ int main(int argc, char **argv)
 	pSvc->Release();
 	pLoc->Release();
 	pEnumerator->Release();
-	CoUninitialize();
+	CoUninitialize();//закрывает библиотеку COM в текущем потоке, выгружает все DLL, загруженные потоком,
+	//освобождает любые другие ресурсы, которые поддерживает поток, и заставляет все соединения RPC в потоке закрываться.
 	system("pause");
 
 	return 0;   // Program successfully completed.
